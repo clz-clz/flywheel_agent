@@ -30,6 +30,10 @@ export interface GapItem {
   required_status: string;
   gap_degree: string;
   suggestion: string;
+  // 兼容前端 TDD 规范的附加字段
+  skill?: string;
+  status?: string;
+  importance?: string;
 }
 
 export interface GapAnalysisResponse {
@@ -115,6 +119,24 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit = {}): Pr
 // 3. 业务接口封装层
 // ==========================================
 
+export interface RawGapItem {
+  dimension?: string;
+  skill?: string;
+  current_status?: string;
+  required_status?: string;
+  gap_degree?: string;
+  suggestion?: string;
+}
+
+export interface RawGapAnalysisResponse {
+  target_role: string;
+  overall_match_score: number;
+  core_strengths?: string[];
+  immediate_next_steps?: string[];
+  gaps?: RawGapItem[];
+  items?: RawGapItem[];
+}
+
 export const AgentAPI = {
   /**
    * Phase 2: 从简历/介绍中提取画像并持久化
@@ -132,11 +154,29 @@ export const AgentAPI = {
    * POST /api/agent/gap-analysis?target_role=...
    */
   analyzeGap: async (targetRole: string): Promise<GapAnalysisResponse> => {
-    // 后端接口要求 target_role 作为 Query 参数传递，而非 Body
     const params = new URLSearchParams({ target_role: targetRole });
-    return fetchWithAuth<GapAnalysisResponse>(`/api/agent/gap-analysis?${params.toString()}`, {
+    // 1. 获取后端原始的脏数据
+    const rawData = await fetchWithAuth<RawGapAnalysisResponse>(`/api/agent/gap-analysis?${params.toString()}`, {
       method: 'POST',
     });
+
+    // 2. 映射为 TDD 规范的干净数据
+    return {
+      target_role: rawData.target_role,
+      overall_match_score: rawData.overall_match_score,
+      core_strengths: rawData.core_strengths || [],
+      immediate_next_steps: rawData.immediate_next_steps || [],
+      gaps: (rawData.gaps || rawData.items || []).map((gap: RawGapItem) => ({
+        dimension: gap.dimension || gap.skill || '未知能力',
+        current_status: gap.current_status || '',
+        required_status: gap.required_status || '',
+        gap_degree: gap.gap_degree || '',
+        suggestion: gap.suggestion || '',
+        skill: gap.dimension || gap.skill || '未知能力', // 兼容前端 TDD
+        status: 'learning', // 后端没有严格枚举，前端给个默认安全值，或根据 gap_degree 动态推导
+        importance: gap.gap_degree === '大差距' ? 'high' : gap.gap_degree === '小差距' ? 'medium' : 'low'
+      }))
+    };
   },
 
   /**

@@ -4,17 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
-
-// 兼容 AI 理想字段与数据库真实字段的混合类型
-type MixedJobItem = {
-  role?: string;
-  matchScore?: number;
-  reason?: string;
-  title?: string;
-  company?: string;
-  salary_range?: string;
-  location?: string;
-};
+import { GapAnalysisCard } from '@/components/cards/gap-analysis-card';
+import { ActionPlanCard } from '@/components/cards/action-plan-card';
 
 export default function FlywheelDashboard() {
   const { messages, isAgentTyping } = useChatStore();
@@ -254,18 +245,12 @@ export default function FlywheelDashboard() {
              {/* 动态渲染区域 */}
              <div className="space-y-8">
                
-               {!recommendationsBlock ? (
+               {!recommendationsBlock && latestMessage?.status !== 'done' && latestMessage?.status !== 'error' ? (
                  /* --- 状态 1：等待数据时的智能骨架屏 --- */
-                 // 🌟 核心修改：判断 Agent 是否在忙。如果在忙，就闪烁；如果闲置，就变暗待机。
-                 <div className={`space-y-6 ${latestMessage?.status !== 'done' && latestMessage?.status !== 'error' ? 'animate-pulse' : 'opacity-40'}`}>
+                 <div className="animate-pulse space-y-6">
                    <div className="w-full h-[300px] bg-[#161718] rounded-3xl border border-zinc-800/60 flex flex-col items-center justify-center gap-4">
-                      <Database className={`w-8 h-8 text-zinc-600 ${latestMessage?.status !== 'done' && latestMessage?.status !== 'error' ? 'animate-bounce' : ''}`} />
-                      <span className="text-zinc-500 text-sm font-mono">
-                        {/* 动态文案提示 */}
-                        {latestMessage?.status !== 'done' && latestMessage?.status !== 'error' 
-                          ? 'Querying Neo4j Graph DB...' 
-                          : '等待 Agent 调取并注入图谱数据...'}
-                      </span>
+                      <Database className="w-8 h-8 text-zinc-600 animate-bounce" />
+                      <span className="text-zinc-500 text-sm font-mono">Agent 正在根据 MCP 数据库实时演算对比结果...</span>
                    </div>
                    <div className="grid grid-cols-2 gap-4">
                      <div className="h-32 bg-[#161718] rounded-2xl border border-zinc-800/60"></div>
@@ -273,70 +258,64 @@ export default function FlywheelDashboard() {
                    </div>
                  </div>
                ) : (
-                 /* --- 状态 2：真实数据注入后的渲染 (Data Injected) --- */
+                 /* --- 状态 2：根据 TDD 规范的 ResultBlock 类型进行多态渲染 --- */
                  <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                   
-                   {/* 这里可以放 FE-2 之后要画的雷达图，目前用核心卡片代替 */}
-                   <div className="w-full bg-[#161718] rounded-3xl border border-zinc-800/60 p-8 mb-6 relative overflow-hidden">
-                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-                     <h4 className="text-lg font-medium text-zinc-200 mb-6 flex items-center gap-2">
-                       <Sparkles className="w-5 h-5 text-blue-400" /> 核心推荐轨道
-                     </h4>
-                     
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                       {recommendationsBlock.items.map((item, idx) => {
-                         // 1. 类型断言：告别 any，使用我们定义的混合类型
-                         const rawItem = item as MixedJobItem;
-                         
-                         // 2. 字段兼容嗅探
-                         const title = rawItem.role || rawItem.title || '未知岗位';
-                         
-                         // 3. 核心修复：用稳定的“伪随机”算法替代 Math.random()
-                         // 通过 index 计算，保证每次渲染的结果绝对固定，彻底解决 Hydration 报错
-                         const fallbackScore = 85 + ((idx * 7) % 13); 
-                         const score = rawItem.matchScore || fallbackScore;
-                         
-                         const desc = rawItem.reason || `🏢 ${rawItem.company || '优质企业'} | 📍 ${rawItem.location || '不限'} | 💰 ${rawItem.salary_range || '薪资面议'}`;
-
+                   {latestMessage?.blocks?.map((block, index) => {
+                     switch (block.type) {
+                       case 'gap_analysis':
+                         return <GapAnalysisCard key={index} items={block.items} />;
+                       case 'action_plan':
+                         return <ActionPlanCard key={index} plan={block.plan} />;
+                       case 'career_recommendations':
                          return (
-                           <div key={idx} className="bg-[#1E1F22] border border-zinc-700/50 p-6 rounded-2xl hover:border-blue-500/40 hover:bg-[#252628] transition-all group cursor-pointer flex flex-col justify-between">
-                             <div>
-                               <div className="flex justify-between items-start mb-4">
-                                 <h4 className="text-xl font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors line-clamp-1" title={title}>
-                                   {title}
-                                 </h4>
-                                 <div className="flex flex-col items-end shrink-0 ml-2">
-                                   <span className="text-2xl font-bold text-emerald-400">{score}</span>
-                                   <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Match Score</span>
-                                 </div>
-                               </div>
-                               <p className="text-sm text-zinc-400 leading-relaxed line-clamp-2">
-                                 {desc}
-                               </p>
-                             </div>
-                             
-                             {/* 进度条展示 */}
-                             <div className="mt-6">
-                               <div className="flex justify-between text-xs text-zinc-500 mb-2">
-                                 <span>能力覆盖率</span>
-                                 <span>{score}%</span>
-                               </div>
-                               <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
-                                 <div 
-                                   className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 rounded-full transition-all duration-1000 delay-500" 
-                                   style={{ width: `${score}%` }}
-                                 ></div>
-                               </div>
+                           <div key={index} className="w-full bg-[#161718] rounded-3xl border border-zinc-800/60 p-8 mb-6 relative overflow-hidden">
+                             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
+                             <h4 className="text-lg font-medium text-zinc-200 mb-6 flex items-center gap-2">
+                               <Sparkles className="w-5 h-5 text-blue-400" /> 核心推荐轨道
+                             </h4>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                               {block.items.map((item, idx) => {
+                                 // 👇 核心修复：移除 as any。TypeScript 已经知道 item 是 CareerRecommendation 类型
+                                 const title = item.role || item.title || '未知岗位';
+                                 const fallbackScore = 85 + ((idx * 7) % 13); 
+                                 const score = item.matchScore || fallbackScore;
+                                 const desc = item.reason || `🏢 ${item.company || '未知企业'} | 📍 ${item.location || '不限'} | 💰 ${item.salary_range || '薪资面议'}`;
+
+                                 return (
+                                   <div key={idx} className="bg-[#1E1F22] border border-zinc-700/50 p-6 rounded-2xl hover:border-blue-500/40 hover:bg-[#252628] transition-all group cursor-pointer flex flex-col justify-between">
+                                     <div>
+                                       <div className="flex justify-between items-start mb-4">
+                                         <h4 className="text-xl font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors line-clamp-1" title={title}>
+                                           {title}
+                                         </h4>
+                                         <div className="flex flex-col items-end shrink-0 ml-2">
+                                           <span className="text-2xl font-bold text-emerald-400">{score}</span>
+                                           <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Match Score</span>
+                                         </div>
+                                       </div>
+                                       <p className="text-sm text-zinc-400 leading-relaxed line-clamp-2">{desc}</p>
+                                     </div>
+                                     <div className="mt-6">
+                                       <div className="flex justify-between text-xs text-zinc-500 mb-2">
+                                         <span>能力覆盖率</span>
+                                         <span>{score}%</span>
+                                       </div>
+                                       <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                         <div className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 rounded-full transition-all duration-1000 delay-500" style={{ width: `${score}%` }}></div>
+                                       </div>
+                                     </div>
+                                   </div>
+                                 );
+                               })}
                              </div>
                            </div>
                          );
-                       })}
-                     </div>
-                   </div>
-
+                       default:
+                         return null; // 处理纯文本或其他未匹配的 block
+                     }
+                   })}
                  </div>
                )}
-
              </div>
 
           </div>
