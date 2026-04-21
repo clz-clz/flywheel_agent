@@ -6,7 +6,7 @@ import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
 import dynamic from 'next/dynamic';
 import { ActionPlanCard } from '@/components/cards/action-plan-card';
-import { GapAnalysisResponse } from '@/lib/api/agentService';
+import { AgentAPI, GapAnalysisResponse } from '@/lib/api/agentService';
 // 在您的目标页面中引入：
 import { ResumeDiagnosisCard } from '@/components/cards/resume-diagnosis-card';
 
@@ -82,6 +82,7 @@ export default function FlywheelDashboard() {
   // 核心控制状态：是否展开右侧 60% 的画板
   const [showAnalysis, setShowAnalysis] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // 提取最新一条 Agent 消息中的 career_recommendations 数据块
   const latestMessage = messages[messages.length - 1];
   const recommendationsBlock = latestMessage?.role === 'assistant' 
@@ -105,6 +106,17 @@ export default function FlywheelDashboard() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleTriggerAnalysis(input);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const res = await AgentAPI.uploadResumePDF(file);
+      sendMessage("我刚刚上传了最新的简历，请重新评估我的情况。");
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -271,7 +283,17 @@ export default function FlywheelDashboard() {
               
               <div className="flex justify-between items-center mt-2 px-2">
                 <div className="flex gap-2">
-                  <button className="p-2 hover:bg-zinc-700/50 rounded-full text-zinc-400 transition-colors">
+                  <input 
+                    type="file" 
+                    accept=".pdf" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={handleFileUpload} 
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 hover:bg-zinc-700/50 rounded-full text-zinc-400 transition-colors"
+                  >
                     <Plus className="w-5 h-5" />
                   </button>
                   <button className="p-2 hover:bg-zinc-700/50 rounded-full text-zinc-400 transition-colors">

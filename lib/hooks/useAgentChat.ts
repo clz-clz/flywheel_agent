@@ -25,12 +25,15 @@ export function useAgentChat() {
     const msgId = addAssistantPlaceholder();
 
     try {
+      // 🚀 修复 2：从浏览器的保险箱中提取您登录时存放的 Token
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      // 📍 发送请求
+      const response = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // 🚀 修复 3：携带身份证明，确保持久化记忆不被拦截
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
@@ -39,31 +42,34 @@ export function useAgentChat() {
         }),
       });
 
-      if (!response.ok) throw new Error(`系统网络异常! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`系统网络异常! status: ${response.status}`);
+      }
 
-      // 🔍 核心修复：强制类型转换为确定的响应结构
-      const data = (await response.json()) as ChatApiResponse;
+      const data = await response.json();
       
       const blocks: ResultBlock[] = data.blocks || [];
-      
-      // 如果后端没直接返回文本积木，我们将 reply 内容手动包装进积木流
-      const textContent = data.reply || '';
+      const textBlock = blocks.find(b => b.type === 'text') as { type: 'text', content: string } | undefined;
       const otherBlocks = blocks.filter(b => b.type !== 'text');
 
       if (otherBlocks.length > 0) {
-        otherBlocks.forEach(block => addResultBlock(msgId, block));
+        otherBlocks.forEach(block => {
+          addResultBlock(msgId, block);
+        });
       }
 
-      if (textContent) {
+      if (textBlock && textBlock.content) {
         updateMessageStatus(msgId, 'rendering_result');
+        const fullText = textBlock.content;
         let currentIndex = 0;
 
         if (typewriterRef.current) clearInterval(typewriterRef.current);
 
         typewriterRef.current = setInterval(() => {
-          if (currentIndex < textContent.length) {
+          if (currentIndex < fullText.length) {
             const chunkSize = Math.floor(Math.random() * 3) + 2;
-            const chunk = textContent.slice(currentIndex, currentIndex + chunkSize);
+            const chunk = fullText.slice(currentIndex, currentIndex + chunkSize);
+            
             appendStreamChunk(msgId, chunk);
             currentIndex += chunkSize;
           } else {
@@ -76,12 +82,11 @@ export function useAgentChat() {
       }
 
     } catch (error) {
-      // 错误处理也需要类型安全
-      const errorMessage = error instanceof Error ? error.message : '未知神经链接故障';
+      console.error("Agent 接口请求失败:", error);
       updateMessageStatus(msgId, 'error');
       addResultBlock(msgId, { 
         type: 'text', 
-        content: `抱歉，指挥官。神经连接已断开: ${errorMessage}` 
+        content: '抱歉，指挥官。神经连接已断开。请检查后端的 FastAPI 引擎是否已成功挂载。' 
       });
     }
   };
