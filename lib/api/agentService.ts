@@ -1,6 +1,8 @@
 // 文件路径：lib/api/agentService.ts
 // 描述：飞轮职业导航 Copilot 核心引擎 API 服务层 (Phase 2-6)
 
+import { ResultBlock } from "../store/useChatStore";
+
 const API_BASE_URL = '';
 
 // ==========================================
@@ -246,19 +248,25 @@ export interface UserMeResponse {
   };
 }
 
+// --- 定义增量更新的特定结构 ---
+export interface ProfileDetectedUpdates {
+  current_skills: string[];
+  certificates: string[];
+  internship_experience: string;
+}
+
+export interface ProfileSyncResponse {
+  status: string;
+  message: string;
+  new_score: number;
+  detected_updates: ProfileDetectedUpdates;
+}
+
 // 针对 /api/user/profile/upload-resume 的响应
 export interface ResumeUploadResponse {
   status: string;
   message: string;
   data: UserProfile; // 复用已有的 UserProfile 接口
-}
-
-// 针对 /api/user/profile/sync-from-chat 的响应
-export interface ProfileSyncResponse {
-  status: string;
-  message: string;
-  new_score: number;
-  detected_updates: Partial<UserProfile>;
 }
 
 // 针对 /api/chat 的完整响应协议
@@ -272,6 +280,11 @@ export interface AuthResponse {
   access_token: string;
   token_type: string;
 }
+
+// lib/api/agentService.ts 
+
+
+// --- 2. 在 AgentAPI 中补全方法 ---
 
 export const AuthAPI = {
   login: async (username: string, password: string): Promise<AuthResponse> => {
@@ -416,9 +429,7 @@ export const AgentAPI = {
    * 从聊天记录同步画像
    * POST /api/user/profile/sync-from-chat
    */
-  syncProfileFromChat: async (): Promise<any> => {
-    return fetchWithAuth('/api/user/profile/sync-from-chat', { method: 'POST' });
-  },
+
 
   /**
    * Phase 4: 能力差距分析 (自动调取后端数据库档案)
