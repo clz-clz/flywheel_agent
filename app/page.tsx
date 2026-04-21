@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen, Download } from "lucide-react";
 import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
 import dynamic from 'next/dynamic';
@@ -42,6 +42,21 @@ export function RightDrawer({ data }: RightDrawerProps) {
     );
   }
 
+  const handleExport = async () => {
+    try {
+      const blob = await AgentAPI.exportReport(data.target_role);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.target_role}_规划报告.md`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("导出失败");
+    }
+  };
+
   return (
     <div className="h-full w-full overflow-y-auto bg-zinc-950 p-6 space-y-8 custom-scrollbar">
       <div className="border-l-2 border-blue-500 pl-4">
@@ -70,6 +85,13 @@ export function RightDrawer({ data }: RightDrawerProps) {
           ))}
         </ul>
       </div>
+
+      <button 
+        onClick={handleExport}
+        className="mt-8 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl transition-all"
+      >
+        <Download className="w-4 h-4" /> 一键导出规划报告 (Markdown)
+      </button>
     </div>
   );
 }
