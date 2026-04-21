@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen, Download } from "lucide-react";
+import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen, Download, RefreshCw } from "lucide-react";
 import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
 import dynamic from 'next/dynamic';
@@ -97,7 +97,7 @@ export function RightDrawer({ data }: RightDrawerProps) {
 }
 
 export default function FlywheelDashboard() {
-  const { messages, isAgentTyping } = useChatStore();
+  const { messages, isAgentTyping, updateProfile, userProfile } = useChatStore();
   const { sendMessage } = useAgentChat();
   
   const [input, setInput] = useState('');
@@ -105,6 +105,8 @@ export default function FlywheelDashboard() {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
   // 提取最新一条 Agent 消息中的 career_recommendations 数据块
   const latestMessage = messages[messages.length - 1];
   const recommendationsBlock = latestMessage?.role === 'assistant' 
@@ -142,6 +144,31 @@ export default function FlywheelDashboard() {
     }
   };
 
+  // --- 核心同步处理函数 ---
+  const handleSyncMemory = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    
+    try {
+      const res = await AgentAPI.syncProfileFromChat();
+      
+      // 1. 更新本地 Zustand Store 里的画像摘要
+      updateProfile({
+        currentSkills: res.detected_updates.current_skills,
+        competitiveness_score: res.new_score
+      });
+
+      // 2. 交互反馈
+      setLastSyncMsg(`同步成功：新识别 ${res.detected_updates.current_skills.length} 项技能`);
+      setTimeout(() => setLastSyncMsg(null), 3000);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "同步失败";
+      console.error(errMsg);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
 
 
 
@@ -162,6 +189,27 @@ export default function FlywheelDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {/* --- 新增：智能同步记忆按钮 --- */}
+          <div className="flex items-center gap-2">
+            {lastSyncMsg && (
+              <span className="text-[10px] text-emerald-400 font-mono animate-in fade-in slide-in-from-right-4">
+                {lastSyncMsg}
+              </span>
+            )}
+            <button 
+              onClick={handleSyncMemory}
+              disabled={isSyncing}
+              className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${
+                isSyncing 
+                  ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' 
+                  : 'bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+              }`}
+            >
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="text-xs">同步记忆</span>
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 bg-[#1E1F22] px-3 py-1 rounded-full border border-zinc-800/50">
              <span className="relative flex h-2 w-2">
                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
