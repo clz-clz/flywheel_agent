@@ -15,6 +15,7 @@ export interface UserProfile {
   experienceSummary?: string;
   workPreference?: string[];
   salaryExpectation?: string;
+  competitiveness_score?: number;
 }
 
 export type UIMessageStatus = 
