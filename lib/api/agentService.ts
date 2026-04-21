@@ -229,7 +229,44 @@ export interface InterviewHistoryResponse {
   data: InterviewHistoryItem[];
 }
 
+export interface UserMeResponse {
+  status: string;
+  data: {
+    account: {
+      id: number;
+      username: string;
+      created_at: string | null;
+    };
+    profile: {
+      name: string;
+      major: string | null;
+      education_level: string | null;
+      has_profile: boolean;
+    };
+  };
+}
 
+// 针对 /api/user/profile/upload-resume 的响应
+export interface ResumeUploadResponse {
+  status: string;
+  message: string;
+  data: UserProfile; // 复用已有的 UserProfile 接口
+}
+
+// 针对 /api/user/profile/sync-from-chat 的响应
+export interface ProfileSyncResponse {
+  status: string;
+  message: string;
+  new_score: number;
+  detected_updates: Partial<UserProfile>;
+}
+
+// 针对 /api/chat 的完整响应协议
+export interface ChatApiResponse {
+  session_id: string;
+  reply: string;
+  blocks?: ResultBlock[]; // 这里的 ResultBlock 复用 useChatStore 中的定义
+}
 
 export interface AuthResponse {
   access_token: string;
@@ -270,28 +307,41 @@ export const AgentAPI = {
    * 获取用户信息 (Auth)
    * GET /api/users/me
    */
-  getMe: async (): Promise<any> => {
-    return fetchWithAuth('/api/users/me', { method: 'GET' });
+  getMe: async (): Promise<UserMeResponse> => {
+    return fetchWithAuth<UserMeResponse>('/api/users/me', { method: 'GET' });
   },
 
   /**
    * 上传 PDF 简历
    * POST /api/user/profile/upload-resume
    */
-  uploadResumePDF: async (file: File): Promise<any> => {
+  uploadResumePDF: async (file: File): Promise<ResumeUploadResponse> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     const formData = new FormData();
     formData.append('file', file);
+
     const headers = new Headers();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
 
     const response = await fetch(`${API_BASE_URL}/api/user/profile/upload-resume`, {
       method: 'POST',
       headers,
       body: formData,
     });
-    if (!response.ok) throw new Error('简历解析失败');
-    return response.json();
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(errorData.detail || '简历解析失败');
+    }
+    return response.json() as Promise<ResumeUploadResponse>;
+  },
+  
+  syncProfileFromChat: async (): Promise<ProfileSyncResponse> => {
+    return fetchWithAuth<ProfileSyncResponse>('/api/user/profile/sync-from-chat', {
+      method: 'POST',
+    });
   },
   
   /**
