@@ -28,7 +28,7 @@ export function useAgentChat() {
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
       // 📍 发送请求
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const response = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 // 文件路径：lib/api/agentService.ts
 // 描述：飞轮职业导航 Copilot 核心引擎 API 服务层 (Phase 2-6)
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://47.111.21.230:8000';
+const API_BASE_URL = '';
 
 // ==========================================
 // 1. 核心类型定义 (严丝合缝对齐后端 Pydantic 模型)
@@ -242,7 +242,8 @@ export const AuthAPI = {
     formData.append('username', username);
     formData.append('password', password);
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://47.111.21.230:8000'}/api/auth/login`, {
+    // 🚀 2. 删掉前面的域名，直接请求相对路径
+    const res = await fetch(`/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: formData.toString(),
@@ -251,7 +252,8 @@ export const AuthAPI = {
     return res.json();
   },
   register: async (username: string, password: string): Promise<{ status: string; message: string }> => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://47.111.21.230:8000'}/api/auth/register`, {
+    // 🚀 3. 删掉前面的域名，直接请求相对路径
+    const res = await fetch(`/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -264,7 +266,33 @@ export const AuthAPI = {
 
 export const AgentAPI = {
 
+  /**
+   * 获取用户信息 (Auth)
+   * GET /api/users/me
+   */
+  getMe: async (): Promise<any> => {
+    return fetchWithAuth('/api/users/me', { method: 'GET' });
+  },
 
+  /**
+   * 上传 PDF 简历
+   * POST /api/user/profile/upload-resume
+   */
+  uploadResumePDF: async (file: File): Promise<any> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const formData = new FormData();
+    formData.append('file', file);
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+
+    const response = await fetch(`${API_BASE_URL}/api/user/profile/upload-resume`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!response.ok) throw new Error('简历解析失败');
+    return response.json();
+  },
   
   /**
    * [补全 1] 获取当前用户画像 (用于页面刷新后的状态恢复)
@@ -332,6 +360,14 @@ export const AgentAPI = {
       method: 'POST',
       body: JSON.stringify({ resume_text: resumeText, session_id: sessionId }),
     });
+  },
+
+  /**
+   * 从聊天记录同步画像
+   * POST /api/user/profile/sync-from-chat
+   */
+  syncProfileFromChat: async (): Promise<any> => {
+    return fetchWithAuth('/api/user/profile/sync-from-chat', { method: 'POST' });
   },
 
   /**
