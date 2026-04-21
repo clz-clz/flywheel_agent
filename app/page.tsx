@@ -4,8 +4,75 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
-import { GapAnalysisCard } from '@/components/cards/gap-analysis-card';
+import dynamic from 'next/dynamic';
 import { ActionPlanCard } from '@/components/cards/action-plan-card';
+import { GapAnalysisResponse } from '@/lib/api/agentService';
+// 在您的目标页面中引入：
+import { ResumeDiagnosisCard } from '@/components/cards/resume-diagnosis-card';
+
+
+// 在渲染区调用：
+<div className="p-6">
+  <ResumeDiagnosisCard />
+</div>
+/**
+ * 核心隔离：动态导入并彻底禁用 SSR
+ * 解决 mathjs 引发的 "navigator is not defined"
+ */
+const GapAnalysisCard = dynamic(
+  () => import('@/components/cards/gap-analysis-card').then((mod) => mod.GapAnalysisCard),
+  { 
+    ssr: false,
+    loading: () => <div className="p-6 text-zinc-500 animate-pulse font-mono">Loading Radar Matrix...</div> 
+  }
+);
+
+interface RightDrawerProps {
+  // 这里的 data 类型对应 AgentAPI.analyzeGap 的返回值
+  data: GapAnalysisResponse | null; 
+}
+
+export function RightDrawer({ data }: RightDrawerProps) {
+  // 状态守卫
+  if (!data) {
+    return (
+      <div className="flex h-full items-center justify-center text-zinc-600 font-mono italic">
+        {">"} Waiting for Career Insight Command...
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full overflow-y-auto bg-zinc-950 p-6 space-y-8 custom-scrollbar">
+      <div className="border-l-2 border-blue-500 pl-4">
+        <h2 className="text-xl font-bold text-zinc-100 uppercase tracking-tighter">
+          Gap Analysis: {data.target_role}
+        </h2>
+        <p className="text-xs text-zinc-500 mt-1">
+          Match Score: <span className="text-blue-400 font-mono">{data.overall_match_score}%</span>
+        </p>
+      </div>
+
+      {/* 🚀 关键修复点：
+        1. 属性名必须叫 items，对应 GapAnalysisCardProps 接口
+        2. 传入的数据是 data.gaps，这是在 API 洗胃层映射好的 GapItem[] 数组
+      */}
+      <GapAnalysisCard items={data.gaps} />
+
+      {/* 下方可以继续添加下一步行动建议等 UI */}
+      <div className="mt-6 space-y-2">
+        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Immediate Actions</h4>
+        <ul className="space-y-1">
+          {data.immediate_next_steps.map((step, idx) => (
+            <li key={idx} className="text-sm text-zinc-300 flex items-start">
+              <span className="text-blue-500 mr-2">▪</span> {step}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 export default function FlywheelDashboard() {
   const { messages, isAgentTyping } = useChatStore();
@@ -40,6 +107,11 @@ export default function FlywheelDashboard() {
       handleTriggerAnalysis(input);
     }
   };
+
+
+
+
+
 
   return (
     // 1. 最外层改为 overflow-hidden，禁止整个页面的全局滚动，把滚动权交给内部容器
@@ -325,3 +397,4 @@ export default function FlywheelDashboard() {
     </div>
   );
 }
+
