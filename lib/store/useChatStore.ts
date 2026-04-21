@@ -38,6 +38,11 @@ export interface CareerRecommendation {
 }
 
 export interface GapAnalysisItem {
+  dimension: string;
+  current_status: string;
+  required_status: string;
+  gap_degree: string;
+  suggestion: string;
   skill: string;
   status: 'acquired' | 'missing' | 'learning';
   importance: 'high' | 'medium' | 'low';
@@ -61,6 +66,15 @@ export type ResultBlock =
   | { type: 'gap_analysis'; items: GapAnalysisItem[] }
   | { type: 'action_plan'; plan: ActionPlanPhase[] }
   | { type: 'tool_status'; events: ToolEvent[] }
+  | { type: 'mock_interview'; role: string; questions: GeneralQuestionItem[] };
+
+  // 1. 引入/定义后端的题目类型
+export interface GeneralQuestionItem {
+  id: number;
+  topic: string;
+  question: string;
+  audio_url: string | null;
+}
 
 export interface UIMessage {
   id: string;
@@ -70,6 +84,8 @@ export interface UIMessage {
   blocks?: ResultBlock[];
   createdAt: string;
 }
+
+
 
 // ==========================================
 // 2. 状态机 Store 接口定义

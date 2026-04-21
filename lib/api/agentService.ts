@@ -1,7 +1,7 @@
 // 文件路径：lib/api/agentService.ts
 // 描述：飞轮职业导航 Copilot 核心引擎 API 服务层 (Phase 2-6)
 
-import { ResultBlock } from "../store/useChatStore";
+import { GeneralQuestionItem, ResultBlock } from "../store/useChatStore";
 
 const API_BASE_URL = '';
 
@@ -281,6 +281,25 @@ export interface AuthResponse {
   token_type: string;
 }
 
+export interface GeneralInterviewResponse {
+  role: string;
+  questions: GeneralQuestionItem[];
+}
+
+export interface MockAnswerRequest {
+  target_role: string;
+  question: string;
+  user_answer: string;
+  focus_area?: string;
+}
+
+export interface MockEvaluation {
+  score: number;
+  evaluation: string;
+  improvement_suggestion: string;
+  reference_answer: string;
+}
+
 // lib/api/agentService.ts 
 
 
@@ -501,21 +520,18 @@ export const AgentAPI = {
     return response.blob();
   },
 
-  /**
-   * Phase 6-2: 评估面试回答并打分
-   * POST /api/agent/mock-interview/evaluate
-   */
+  // 1. 获取通用面试题
+  getGeneralQuestions: async (targetRole: string, focusTopics: string = "基础知识, 实战经验"): Promise<GeneralInterviewResponse> => {
+    const params = new URLSearchParams({ target_role: targetRole, focus_topics: focusTopics });
+    return fetchWithAuth<GeneralInterviewResponse>(`/api/interview/questions?${params.toString()}`, { method: 'GET' });
+  },
+
+  // 2. 提交答案并获取名企级面评
   evaluateInterviewAnswer: async (request: MockAnswerRequest): Promise<MockEvaluation> => {
     return fetchWithAuth<MockEvaluation>('/api/agent/mock-interview/evaluate', {
       method: 'POST',
       body: JSON.stringify(request),
     });
   }
-
   
 };
-
-
-
-
-

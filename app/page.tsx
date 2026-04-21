@@ -1,20 +1,16 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect , useCallback} from 'react';
 import { Sparkles, Plus, Mic, FileText, Crosshair, Map, Menu, UserCircle2, Send, Loader2, Database, Bot, PanelRightClose, PanelRightOpen, Download, RefreshCw } from "lucide-react";
 import { useChatStore, CareerRecommendation } from '@/lib/store/useChatStore';
 import { useAgentChat } from '@/lib/hooks/useAgentChat';
 import dynamic from 'next/dynamic';
 import { ActionPlanCard } from '@/components/cards/action-plan-card';
-import { AgentAPI, GapAnalysisResponse } from '@/lib/api/agentService';
-// 在您的目标页面中引入：
+import { AgentAPI, GapAnalysisResponse, InterviewHistoryItem , GapItem} from '@/lib/api/agentService';
 import { ResumeDiagnosisCard } from '@/components/cards/resume-diagnosis-card';
+import { MockInterviewPanel } from '@/components/cards/mock-interview-panel';
+import { UIMessage, ResultBlock } from '@/lib/store/useChatStore';
 
-
-// 在渲染区调用：
-<div className="p-6">
-  <ResumeDiagnosisCard />
-</div>
 /**
  * 核心隔离：动态导入并彻底禁用 SSR
  * 解决 mathjs 引发的 "navigator is not defined"
@@ -28,11 +24,52 @@ const GapAnalysisCard = dynamic(
 );
 
 interface RightDrawerProps {
-  // 这里的 data 类型对应 AgentAPI.analyzeGap 的返回值
   data: GapAnalysisResponse | null; 
 }
 
+interface RoadmapDetailData {
+  target_role?: string;
+  overall_match_score?: number;
+  immediate_next_steps?: string[];
+  milestones?: unknown[]; // 这是 action_plan 路线图独有的字段
+  gaps?: GapItem[];       // 这是 gap_analysis 雷达图独有的字段
+}
+
+
+
 export function RightDrawer({ data }: RightDrawerProps) {
+  // 🔴 1. 新增导出加载状态 (严格 boolean 类型)
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // 🔴 2. 导出报告处理函数
+  const handleExport = async () => {
+    if (!data?.target_role || isExporting) return;
+    
+    setIsExporting(true);
+    try {
+      // 调用 agentService.ts 中已有的导出接口
+      const blob = await AgentAPI.exportReport(data.target_role);
+      
+      // 创建 Blob URL 并触发下载
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Career_Report_${data.target_role}.md`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // 清理 DOM 和内存
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("报告导出失败:", err);
+      // 这里可以替换为你项目中的 Toast 提示
+      alert("导出失败，请检查网络或稍后重试"); 
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // 状态守卫
   if (!data) {
     return (
@@ -41,21 +78,6 @@ export function RightDrawer({ data }: RightDrawerProps) {
       </div>
     );
   }
-
-  const handleExport = async () => {
-    try {
-      const blob = await AgentAPI.exportReport(data.target_role);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${data.target_role}_规划报告.md`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("导出失败");
-    }
-  };
 
   return (
     <div className="h-full w-full overflow-y-auto bg-zinc-950 p-6 space-y-8 custom-scrollbar">
@@ -68,13 +90,8 @@ export function RightDrawer({ data }: RightDrawerProps) {
         </p>
       </div>
 
-      {/* 🚀 关键修复点：
-        1. 属性名必须叫 items，对应 GapAnalysisCardProps 接口
-        2. 传入的数据是 data.gaps，这是在 API 洗胃层映射好的 GapItem[] 数组
-      */}
       <GapAnalysisCard items={data.gaps} />
 
-      {/* 下方可以继续添加下一步行动建议等 UI */}
       <div className="mt-6 space-y-2">
         <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Immediate Actions</h4>
         <ul className="space-y-1">
@@ -86,11 +103,21 @@ export function RightDrawer({ data }: RightDrawerProps) {
         </ul>
       </div>
 
+      {/* 🔴 3. 新增导出按钮 UI */}
       <button 
         onClick={handleExport}
-        className="mt-8 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl transition-all"
+        disabled={isExporting}
+        className={`mt-8 w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all ${
+          isExporting 
+            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20'
+        }`}
       >
-        <Download className="w-4 h-4" /> 一键导出规划报告 (Markdown)
+        {isExporting ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> 正在生成报告...</>
+        ) : (
+          <><Download className="w-4 h-4" /> 一键导出规划报告 (Markdown)</>
+        )}
       </button>
     </div>
   );
@@ -99,6 +126,8 @@ export function RightDrawer({ data }: RightDrawerProps) {
 export default function FlywheelDashboard() {
   const { messages, isAgentTyping, updateProfile, userProfile } = useChatStore();
   const { sendMessage } = useAgentChat();
+  const [historyAnalysisData, setHistoryAnalysisData] = useState<GapAnalysisResponse | null>(null);
+  const { addResultBlock, addAssistantPlaceholder, updateMessageStatus} = useChatStore();
   
   const [input, setInput] = useState('');
   // 核心控制状态：是否展开右侧 60% 的画板
@@ -107,8 +136,61 @@ export default function FlywheelDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
-  // 提取最新一条 Agent 消息中的 career_recommendations 数据块
+  const handleSelectRoadmap = useCallback((rawDetail: Record<string, unknown>) => {
+    // 强制 TypeScript 将未知的字典对象识别为我们定义的精确接口
+    const detail = rawDetail as unknown as RoadmapDetailData;
+  const mappedData: GapAnalysisResponse = {
+      target_role: detail.target_role || "历史规划岗位",
+      overall_match_score: detail.overall_match_score || 0,
+      core_strengths: [], // 兜底空数组
+      immediate_next_steps: detail.immediate_next_steps || [],
+      // 如果存在 milestones 说明这是路线图，不需要画雷达图；如果有 gaps 则渲染雷达图
+      gaps: detail.milestones ? [] : (detail.gaps || []) 
+    };
+
+    setHistoryAnalysisData(mappedData);
+    setShowAnalysis(true); // 丝滑展开右侧
+  }, []);
+
+  const handleSelectInterview = useCallback((item: InterviewHistoryItem) => {
+    const msgId = addAssistantPlaceholder();
+    updateMessageStatus(msgId, 'rendering_result');
+    
+    addResultBlock(msgId, {
+      type: 'text',
+      content: `[历史复盘] 以下是您关于“${item.question.slice(0, 15)}...”的面试表现回顾：`
+    });
+
+    addResultBlock(msgId, {
+      type: 'text', 
+      content: `得分：${item.score}\n考官点评：${item.evaluation}\n参考答案：${item.reference_answer}`
+    });
+    
+    updateMessageStatus(msgId, 'done');
+  }, [addAssistantPlaceholder, addResultBlock, updateMessageStatus]);
+
+  // 辅助函数：严格类型守卫
+  function recommendationsBlockToGapResponse(message: UIMessage | null): GapAnalysisResponse | null {
+    if (!message || !message.blocks) return null;
+    
+    const gapBlock = message.blocks.find(
+      (b): b is Extract<ResultBlock, { type: 'gap_analysis' }> => b.type === 'gap_analysis'
+    );
+    
+    if (!gapBlock) return null;
+    
+    return {
+      target_role: "分析结果",
+      overall_match_score: 85,
+      core_strengths: [],
+      gaps: gapBlock.items,
+      immediate_next_steps: []
+    };
+  }
+
+  // 获取最新的消息
   const latestMessage = messages[messages.length - 1];
+
   const recommendationsBlock = latestMessage?.role === 'assistant' 
     ? latestMessage.blocks?.find(b => b.type === 'career_recommendations') as { type: 'career_recommendations', items: CareerRecommendation[] } | undefined
     : undefined;
@@ -133,6 +215,8 @@ export default function FlywheelDashboard() {
     }
   };
 
+  
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -143,6 +227,12 @@ export default function FlywheelDashboard() {
       console.error(error);
     }
   };
+
+ 
+
+
+
+  
 
   // --- 核心同步处理函数 ---
   const handleSyncMemory = async () => {
@@ -327,15 +417,30 @@ export default function FlywheelDashboard() {
                 ? 'order-2 mt-6 justify-center flex-wrap' // 初始状态：在输入框下方、居中、允许换行
                 : 'order-1 mb-3 justify-start overflow-x-auto scrollbar-hide w-full' // 聊天状态：跳到输入框上方、靠左、可横向滑动
             }`}>
-              <button onClick={() => handleTriggerAnalysis("简历缺陷一键诊断")} className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors">
-                <FileText className="w-4 h-4 text-[#4285F4]" /> 简历缺陷一键诊断
+              
+              <button 
+                onClick={() => handleTriggerAnalysis("简历缺陷一键诊断")} 
+                className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors"
+              >
+                <FileText className="w-4 h-4 text-[#4285F4]" /> 简历缺陷诊断
               </button>
-              <button onClick={() => handleTriggerAnalysis("测试目标岗匹配度")} className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors">
-                <Crosshair className="w-4 h-4 text-[#EA4335]" /> 测试目标岗匹配度
+              
+              <button 
+                // 👇 修改点：这里我们加上冒号，方便拦截器解析目标岗位
+                onClick={() => handleTriggerAnalysis("测试目标岗匹配度：后端开发工程师")} 
+                className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors"
+              >
+                <Crosshair className="w-4 h-4 text-[#EA4335]" /> 测试岗匹配度
               </button>
-              <button onClick={() => handleTriggerAnalysis("渲染大厂晋升图谱")} className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors">
-                <Map className="w-4 h-4 text-[#34A853]" /> 渲染大厂晋升图谱
+              
+              <button 
+                // 👇 修改点：同样指定一个测试用的高级岗位，触发 Action Plan
+                onClick={() => handleTriggerAnalysis("渲染大厂晋升图谱：AI智能体开发工程师")} 
+                className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors"
+              >
+                <Map className="w-4 h-4 text-[#34A853]" /> 渲染晋升图谱
               </button>
+              
             </div>
 
             {/* 输入框容器 */}
@@ -427,7 +532,16 @@ export default function FlywheelDashboard() {
                    {latestMessage?.blocks?.map((block, index) => {
                      switch (block.type) {
                        case 'gap_analysis':
-                         return <GapAnalysisCard key={index} items={block.items} />;
+                         const gapData = recommendationsBlockToGapResponse(latestMessage);
+                         return gapData ? <GapAnalysisCard key={index} items={gapData.gaps} /> : null;
+                       case 'mock_interview':
+                        return (
+                        <MockInterviewPanel 
+                          key={index} 
+                          role={block.role} 
+                          questions={block.questions} 
+                        />
+                      );  
                        case 'action_plan':
                          return <ActionPlanCard key={index} plan={block.plan} />;
                        case 'career_recommendations':
