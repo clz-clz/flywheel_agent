@@ -3,6 +3,19 @@ import { create } from 'zustand'
 // ==========================================
 // 1. 业务实体与 ACP 协议定义 (严格遵循 TDD 规范)
 // ==========================================
+export interface SkillNode {
+  name: string;
+  isMastered: boolean;
+}
+export interface PromotionLevel {
+  id: string;
+  level: string;
+  title: string;
+  status: 'acquired' | 'current' | 'locked';
+  coreSkills: SkillNode[];
+  salaryRange: string;
+}
+export type NodeStatus = 'acquired' | 'current' | 'locked';
 
 export interface UserProfile {
   educationLevel?: string;
@@ -17,6 +30,13 @@ export interface UserProfile {
   salaryExpectation?: string;
   competitiveness_score?: number;
 }
+
+export interface SkillNode {
+  name: string;
+  isMastered: boolean;
+}
+
+
 
 export type UIMessageStatus = 
   | 'idle' 
@@ -60,15 +80,17 @@ export interface ToolEvent {
   status: 'pending' | 'success' | 'error';
 }
 
-export type ResultBlock =
-  | { type: 'text'; content: string }
-  | { type: 'career_recommendations'; items: CareerRecommendation[] }
-  | { type: 'gap_analysis'; items: GapAnalysisItem[] }
-  | { type: 'action_plan'; plan: ActionPlanPhase[] }
-  | { type: 'tool_status'; events: ToolEvent[] }
-  | { type: 'mock_interview'; role: string; questions: GeneralQuestionItem[] };
+// 🚀 [新增] 晋升图谱层级接口
+export interface PromotionLevel {
+  id: string;
+  level: string;
+  title: string;
+  status: NodeStatus;
+  coreSkills: SkillNode[];
+  salaryRange: string;
+}
 
-  // 1. 引入/定义后端的题目类型
+// 1. 引入/定义后端的题目类型
 export interface GeneralQuestionItem {
   id: number;
   topic: string;
@@ -76,6 +98,16 @@ export interface GeneralQuestionItem {
   audio_url: string | null;
 }
 
+export type ResultBlock =
+  | { type: 'text'; content: string }
+  | { type: 'career_recommendations'; items: CareerRecommendation[] }
+  | { type: 'gap_analysis'; items: GapAnalysisItem[] }
+  | { type: 'action_plan'; plan: ActionPlanPhase[] }
+  | { type: 'tool_status'; events: ToolEvent[] }
+  | { type: 'mock_interview'; role: string; questions: GeneralQuestionItem[] }
+  | { type: 'promotion_graph'; roleName: string; levels?: PromotionLevel[] }
+  | { type: 'career_map'; data: { levels: PromotionLevel[] } }
+  | { type: 'career_map'; data: { levels: PromotionLevel[] } };
 export interface UIMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -84,8 +116,6 @@ export interface UIMessage {
   blocks?: ResultBlock[];
   createdAt: string;
 }
-
-
 
 // ==========================================
 // 2. 状态机 Store 接口定义
@@ -101,6 +131,7 @@ interface ChatState {
   addUserMessage: (text: string) => void;
   addAssistantPlaceholder: () => string; 
   updateMessageStatus: (id: string, status: UIMessageStatus) => void;
+  setIsGenerating: (val: boolean) => void; // 🚀 [新增] 防死锁控制
   appendStreamChunk: (id: string, chunk: string) => void;
   addResultBlock: (id: string, block: ResultBlock) => void;
   setError: (id: string, errorMsg: string) => void;
@@ -116,7 +147,6 @@ export const useChatStore = create<ChatState>((set) => ({
   isAgentTyping: false,
   userProfile: {},
 
-  // 初始化会话，清空历史
   initSession: (sessionId) => set({ 
     sessionId, 
     messages: [], 
@@ -124,7 +154,6 @@ export const useChatStore = create<ChatState>((set) => ({
     userProfile: {} 
   }),
 
-  // 同步插入用户消息
   addUserMessage: (text) => {
     const newMessage: UIMessage = {
       id: crypto.randomUUID(),
@@ -135,14 +164,13 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({ messages: [...state.messages, newMessage] }));
   },
 
-  // 为 Assistant 创建占位符，返回 ID 供后续更新
   addAssistantPlaceholder: () => {
     const id = crypto.randomUUID();
     const placeholder: UIMessage = {
       id,
       role: 'assistant',
       status: 'thinking',
-      blocks: [], // 初始为空积木池
+      blocks: [], 
       createdAt: new Date().toISOString(),
     };
     set((state) => ({ 
@@ -152,7 +180,9 @@ export const useChatStore = create<ChatState>((set) => ({
     return id;
   },
 
-  // 精准更新消息状态
+  // 🚀 [新增] 显式控制 Typing 状态，防止输入框死锁
+  setIsGenerating: (val) => set({ isAgentTyping: val }),
+
   updateMessageStatus: (id, status) => {
     set((state) => ({
       messages: state.messages.map((msg) => 
@@ -162,13 +192,11 @@ export const useChatStore = create<ChatState>((set) => ({
     }));
   },
 
-  // 处理 SSE 文本流：自动维护 text 类型的 ResultBlock
   appendStreamChunk: (id, chunk) => {
     set((state) => ({
       messages: state.messages.map((msg) => {
         if (msg.id !== id) return msg;
         
-        // 自动状态跃迁：收到文本即进入渲染态
         const newStatus = (msg.status === 'thinking' || msg.status === 'calling_tool') 
           ? 'rendering_result' 
           : msg.status;
@@ -178,12 +206,10 @@ export const useChatStore = create<ChatState>((set) => ({
 
         let nextBlocks: ResultBlock[];
         if (textBlockIndex > -1) {
-          // 在现有文本块后追加
           nextBlocks = [...currentBlocks];
           const oldBlock = nextBlocks[textBlockIndex] as { type: 'text'; content: string };
           nextBlocks[textBlockIndex] = { ...oldBlock, content: oldBlock.content + chunk };
         } else {
-          // 创建首个文本块
           nextBlocks = [...currentBlocks, { type: 'text', content: chunk }];
         }
 
@@ -192,25 +218,19 @@ export const useChatStore = create<ChatState>((set) => ({
     }));
   },
 
-  // 接收结构化卡片数据 (如 ACP 协议中的结构化 Block)
   addResultBlock: (id, block) => {
     set((state) => ({
       messages: state.messages.map((msg) => {
         if (msg.id !== id) return msg;
-        
         let currentBlocks = msg.blocks || [];
-        
-        // 策略处理：如果新 block 是工具状态，则替换掉旧的工具状态块以保持 UI 简洁
         if (block.type === 'tool_status') {
            currentBlocks = currentBlocks.filter(b => b.type !== 'tool_status');
         }
-        
         return { ...msg, blocks: [...currentBlocks, block] };
       })
     }));
   },
 
-  // 统一错误处理
   setError: (id, errorMsg) => {
     set((state) => ({
       messages: state.messages.map((msg) => 
@@ -224,7 +244,6 @@ export const useChatStore = create<ChatState>((set) => ({
     }));
   },
 
-  // TDD 14.1: 实时更新并维护用户画像摘要
   updateProfile: (profileUpdate) => {
     set((state) => ({ 
       userProfile: { ...state.userProfile, ...profileUpdate } 

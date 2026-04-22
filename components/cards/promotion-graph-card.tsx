@@ -2,25 +2,8 @@
 
 import React, { useState } from 'react';
 import { Award, Lock, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
-
-// ==========================================
-// 1. 强类型契约防御 (0 any)
-// ==========================================
-export type NodeStatus = 'acquired' | 'current' | 'locked';
-
-export interface SkillNode {
-  name: string;
-  isMastered: boolean;
-}
-
-export interface PromotionLevel {
-  id: string;
-  level: string;        // 如: P5 / T3
-  title: string;        // 如: 初级研发工程师
-  status: NodeStatus;
-  coreSkills: SkillNode[];
-  salaryRange: string;
-}
+// 🚀 核心修复：直接从全局 Store 导入类型，彻底消除类型割裂
+import { PromotionLevel, NodeStatus, SkillNode } from '@/lib/store/useChatStore';
 
 interface PromotionGraphCardProps {
   roleName?: string;
@@ -67,9 +50,6 @@ const DEFAULT_LEVELS: PromotionLevel[] = [
   },
 ];
 
-// ==========================================
-// 2. 组件渲染核心
-// ==========================================
 export function PromotionGraphCard({ 
   roleName = '大厂通用技术路径', 
   levels = DEFAULT_LEVELS 
@@ -106,7 +86,6 @@ export function PromotionGraphCard({
 
   return (
     <div className="flex w-full flex-col space-y-6 rounded-xl border border-zinc-800 bg-zinc-950/50 p-6 backdrop-blur-md relative overflow-hidden">
-      {/* 标题栏 */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-4 z-10">
         <div className="flex items-center space-x-2">
           <Award className="h-6 w-6 text-purple-500" />
@@ -117,9 +96,7 @@ export function PromotionGraphCard({
         <span className="text-xs font-mono text-zinc-500">{roleName}</span>
       </div>
 
-      {/* 核心：节点时间线渲染 */}
       <div className="relative z-10 flex flex-col space-y-8 mt-4">
-        {/* 左侧贯穿的连接线 */}
         <div className="absolute left-[1.15rem] top-2 bottom-6 w-0.5 bg-zinc-800 -z-10" />
 
         {levels.map((lvl) => {
@@ -133,12 +110,10 @@ export function PromotionGraphCard({
               onMouseEnter={() => setHoveredNode(lvl.id)}
               onMouseLeave={() => setHoveredNode(null)}
             >
-              {/* 状态锚点 */}
               <div className={`mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 ${config.borderColor} bg-zinc-950 transition-transform duration-300 ${isHovered ? 'scale-110 shadow-lg shadow-blue-900/20' : ''}`}>
                 {config.icon}
               </div>
 
-              {/* 节点卡片 */}
               <div className={`flex-1 rounded-lg border ${config.borderColor} ${config.bgColor} p-4 transition-all duration-300 hover:border-zinc-500`}>
                 <div className="flex flex-col md:flex-row md:items-center justify-between">
                   <div>
@@ -148,7 +123,6 @@ export function PromotionGraphCard({
                     <p className="text-xs text-zinc-500 mt-1 font-mono">预期薪资: {lvl.salaryRange}</p>
                   </div>
                   
-                  {/* 状态徽章 */}
                   {lvl.status === 'current' && (
                     <span className="mt-2 md:mt-0 inline-flex animate-pulse items-center rounded-full bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-400 border border-blue-500/20">
                       当前突破目标
@@ -156,7 +130,6 @@ export function PromotionGraphCard({
                   )}
                 </div>
 
-                {/* 展开的技能图谱联动高亮区 */}
                 <div className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 overflow-hidden transition-all duration-500 ${isHovered || lvl.status === 'current' ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
                   {lvl.coreSkills.map((skill, idx) => (
                     <div key={idx} className="flex items-center space-x-2 text-xs">

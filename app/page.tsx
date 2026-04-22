@@ -9,12 +9,10 @@ import { ActionPlanCard } from '@/components/cards/action-plan-card';
 import { AgentAPI, GapAnalysisResponse, InterviewHistoryItem , GapItem} from '@/lib/api/agentService';
 import { ResumeDiagnosisCard } from '@/components/cards/resume-diagnosis-card';
 import { MockInterviewPanel } from '@/components/cards/mock-interview-panel';
+// 🚀 [新增] 导入晋升图谱组件
+import { PromotionGraphCard } from '@/components/cards/promotion-graph-card';
 import { UIMessage, ResultBlock } from '@/lib/store/useChatStore';
 
-/**
- * 核心隔离：动态导入并彻底禁用 SSR
- * 解决 mathjs 引发的 "navigator is not defined"
- */
 const GapAnalysisCard = dynamic(
   () => import('@/components/cards/gap-analysis-card').then((mod) => mod.GapAnalysisCard),
   { 
@@ -31,46 +29,35 @@ interface RoadmapDetailData {
   target_role?: string;
   overall_match_score?: number;
   immediate_next_steps?: string[];
-  milestones?: unknown[]; // 这是 action_plan 路线图独有的字段
-  gaps?: GapItem[];       // 这是 gap_analysis 雷达图独有的字段
+  milestones?: unknown[]; 
+  gaps?: GapItem[];       
 }
 
-
-
 export function RightDrawer({ data }: RightDrawerProps) {
-  // 🔴 1. 新增导出加载状态 (严格 boolean 类型)
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  // 🔴 2. 导出报告处理函数
   const handleExport = async () => {
     if (!data?.target_role || isExporting) return;
     
     setIsExporting(true);
     try {
-      // 调用 agentService.ts 中已有的导出接口
       const blob = await AgentAPI.exportReport(data.target_role);
-      
-      // 创建 Blob URL 并触发下载
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = `Career_Report_${data.target_role}.md`;
       document.body.appendChild(link);
       link.click();
-      
-      // 清理 DOM 和内存
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("报告导出失败:", err);
-      // 这里可以替换为你项目中的 Toast 提示
       alert("导出失败，请检查网络或稍后重试"); 
     } finally {
       setIsExporting(false);
     }
   };
 
-  // 状态守卫
   if (!data) {
     return (
       <div className="flex h-full items-center justify-center text-zinc-600 font-mono italic">
@@ -103,7 +90,6 @@ export function RightDrawer({ data }: RightDrawerProps) {
         </ul>
       </div>
 
-      {/* 🔴 3. 新增导出按钮 UI */}
       <button 
         onClick={handleExport}
         disabled={isExporting}
@@ -130,26 +116,22 @@ export default function FlywheelDashboard() {
   const { addResultBlock, addAssistantPlaceholder, updateMessageStatus} = useChatStore();
   
   const [input, setInput] = useState('');
-  // 核心控制状态：是否展开右侧 60% 的画板
-  const [showAnalysis, setShowAnalysis] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
+
   const handleSelectRoadmap = useCallback((rawDetail: Record<string, unknown>) => {
-    // 强制 TypeScript 将未知的字典对象识别为我们定义的精确接口
     const detail = rawDetail as unknown as RoadmapDetailData;
-  const mappedData: GapAnalysisResponse = {
+    const mappedData: GapAnalysisResponse = {
       target_role: detail.target_role || "历史规划岗位",
       overall_match_score: detail.overall_match_score || 0,
-      core_strengths: [], // 兜底空数组
+      core_strengths: [], 
       immediate_next_steps: detail.immediate_next_steps || [],
-      // 如果存在 milestones 说明这是路线图，不需要画雷达图；如果有 gaps 则渲染雷达图
       gaps: detail.milestones ? [] : (detail.gaps || []) 
     };
 
     setHistoryAnalysisData(mappedData);
-    setShowAnalysis(true); // 丝滑展开右侧
   }, []);
 
   const handleSelectInterview = useCallback((item: InterviewHistoryItem) => {
@@ -169,43 +151,16 @@ export default function FlywheelDashboard() {
     updateMessageStatus(msgId, 'done');
   }, [addAssistantPlaceholder, addResultBlock, updateMessageStatus]);
 
-  // 辅助函数：严格类型守卫
-  function recommendationsBlockToGapResponse(message: UIMessage | null): GapAnalysisResponse | null {
-    if (!message || !message.blocks) return null;
-    
-    const gapBlock = message.blocks.find(
-      (b): b is Extract<ResultBlock, { type: 'gap_analysis' }> => b.type === 'gap_analysis'
-    );
-    
-    if (!gapBlock) return null;
-    
-    return {
-      target_role: "分析结果",
-      overall_match_score: 85,
-      core_strengths: [],
-      gaps: gapBlock.items,
-      immediate_next_steps: []
-    };
-  }
-
-  // 获取最新的消息
   const latestMessage = messages[messages.length - 1];
-
-  const recommendationsBlock = latestMessage?.role === 'assistant' 
-    ? latestMessage.blocks?.find(b => b.type === 'career_recommendations') as { type: 'career_recommendations', items: CareerRecommendation[] } | undefined
-    : undefined;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 综合触发指令：发消息 + 丝滑展开右侧
   const handleTriggerAnalysis = (text: string) => {
     if (!text.trim() || isAgentTyping) return;
     sendMessage(text);
     setInput('');
-    // 延迟 300ms 展开，配合 Agent 的 thinking 状态，更有"启动分析"的算力感
-    setTimeout(() => setShowAnalysis(true), 300);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -215,60 +170,38 @@ export default function FlywheelDashboard() {
     }
   };
 
-  
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const res = await AgentAPI.uploadResumePDF(file);
+      await AgentAPI.uploadResumePDF(file);
       sendMessage("我刚刚上传了最新的简历，请重新评估我的情况。");
     } catch (error) {
       console.error(error);
     }
   };
 
- 
-
-
-
-  
-
-  // --- 核心同步处理函数 ---
   const handleSyncMemory = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
-    
     try {
       const res = await AgentAPI.syncProfileFromChat();
-      
-      // 1. 更新本地 Zustand Store 里的画像摘要
       updateProfile({
         currentSkills: res.detected_updates.current_skills,
         competitiveness_score: res.new_score
       });
-
-      // 2. 交互反馈
       setLastSyncMsg(`同步成功：新识别 ${res.detected_updates.current_skills.length} 项技能`);
       setTimeout(() => setLastSyncMsg(null), 3000);
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "同步失败";
-      console.error(errMsg);
+      console.error(error instanceof Error ? error.message : "同步失败");
     } finally {
       setIsSyncing(false);
     }
   };
 
-
-
-
-
-
   return (
-    // 1. 最外层改为 overflow-hidden，禁止整个页面的全局滚动，把滚动权交给内部容器
     <div className="h-screen bg-[#131314] text-zinc-100 flex flex-col font-sans selection:bg-blue-500/30 overflow-hidden">
       
-      {/* --- 顶部领航栏 (保持不动) --- */}
       <header className="flex justify-between items-center p-4 shrink-0 z-20 bg-[#131314]">
         <div className="flex items-center gap-3">
           <button className="p-2 hover:bg-zinc-800/50 rounded-full transition-colors text-zinc-400">
@@ -279,7 +212,6 @@ export default function FlywheelDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {/* --- 新增：智能同步记忆按钮 --- */}
           <div className="flex items-center gap-2">
             {lastSyncMsg && (
               <span className="text-[10px] text-emerald-400 font-mono animate-in fade-in slide-in-from-right-4">
@@ -311,44 +243,17 @@ export default function FlywheelDashboard() {
         </div>
       </header>
 
-      {/* --- 核心分屏主画布 --- */}
-      {/* 使用 flex-row 将画布分为左右两部分 */}
       <main className="flex-1 flex overflow-hidden w-full relative">
-        
-        {/* ================= 左侧：Chat Pane (40% / 100% 动态切换区) ================= */}
+        {/* 左侧：聊天区域 (100% 在小屏幕, 40% 在大屏幕) */}
         <section 
-          className={`flex flex-col h-full transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] relative z-20 
-          ${showAnalysis ? 'w-[40%] border-r border-zinc-800 bg-[#131314]' : 'w-full bg-[#131314]'}`}
+          className="flex flex-col h-full lg:w-[40%] w-full border-r border-zinc-800 bg-[#131314] relative z-20"
         >
-          {/* ================= 动态分析面板 Toggle 开关 ================= */}
-          {/* 只有当对话记录大于 0 时，才显示这个控制开关 */}
-          {messages.length > 0 && (
-            <button 
-              onClick={() => setShowAnalysis(!showAnalysis)}
-              className="absolute top-4 right-6 p-2.5 rounded-xl bg-[#1E1F22] border border-zinc-800/80 text-zinc-400 hover:text-blue-400 hover:bg-[#252628] hover:border-blue-500/30 transition-all z-50 shadow-lg group flex items-center gap-2"
-              title={showAnalysis ? "收起分析图谱" : "展开分析图谱"}
-            >
-              {showAnalysis ? (
-                <>
-                  <span className="text-xs font-medium opacity-0 group-hover:opacity-100 w-0 group-hover:w-auto overflow-hidden transition-all whitespace-nowrap">收起面板</span>
-                  <PanelRightClose className="w-5 h-5 transition-transform group-hover:scale-110" />
-                </>
-              ) : (
-                <>
-                  <span className="text-xs font-medium opacity-0 group-hover:opacity-100 w-0 group-hover:w-auto overflow-hidden transition-all whitespace-nowrap">查看图谱</span>
-                  <PanelRightOpen className="w-5 h-5 transition-transform group-hover:scale-110" />
-                </>
-              )}
-            </button>
-          )}
+          {/* 移除 toggle 按钮 - 现在使用响应式设计 */}
 
-          {/* 聊天记录区 (占满剩余高度，内部滚动) */}
-          <div className={`flex-1 overflow-y-auto scrollbar-hide flex flex-col ${showAnalysis ? 'pt-4' : 'items-center pt-8 md:pt-16'}`}>
-            
-            <div className={`w-full flex flex-col items-center ${showAnalysis ? 'px-6' : 'max-w-[820px] px-4'}`}>
+          <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col items-center pt-8 md:pt-16">
+            <div className="w-full flex flex-col items-center max-w-[820px] px-4">
               
-              {/* 状态 A：初次见面 (Hero) */}
-              {messages.length === 0 && !showAnalysis && (
+              {messages.length === 0 && (
                 <div className="w-full animate-in fade-in slide-in-from-bottom-8 duration-700 mb-12">
                    <h1 className="text-[3.25rem] font-semibold mb-3 flex items-center gap-4">
                      <Sparkles className="text-blue-400 w-10 h-10 animate-pulse" />
@@ -362,7 +267,6 @@ export default function FlywheelDashboard() {
                 </div>
               )}
 
-              {/* 状态 B：对话流 */}
               <div className="w-full flex flex-col gap-8 pb-10">
                 {messages.map((msg) => (
                   <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -387,7 +291,7 @@ export default function FlywheelDashboard() {
                           {msg.status === 'calling_tool' && (
                             <div className="flex items-center gap-3 text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 px-4 py-2 rounded-lg font-mono text-xs">
                               <Database className="w-4 h-4 animate-bounce" /> 
-                              [MCP_TOOL_CALL]: 正在检索千万级岗匹配图谱...
+                              [MCP_TOOL_CALL]: 正在处理结构化数据...
                             </div>
                           )}
 
@@ -408,15 +312,9 @@ export default function FlywheelDashboard() {
             </div>
           </div>
 
-          {/* ================= 极客命令舱 (修改区：持久化快捷指令) ================= */}
-          <div className={`w-full shrink-0 px-4 pb-8 transition-all duration-700 flex flex-col ${showAnalysis ? 'pt-4' : 'max-w-[852px] mx-auto pt-8'}`}>
+          <div className="w-full shrink-0 px-4 pb-8 transition-all duration-700 flex flex-col max-w-[852px] mx-auto pt-8">
             
-            {/* 快捷指令 Pill (利用 Flex Order 动态改变上下位置) */}
-            <div className={`flex gap-3 transition-all duration-700 animate-in fade-in duration-1000 ${
-              !showAnalysis && messages.length === 0
-                ? 'order-2 mt-6 justify-center flex-wrap' // 初始状态：在输入框下方、居中、允许换行
-                : 'order-1 mb-3 justify-start overflow-x-auto scrollbar-hide w-full' // 聊天状态：跳到输入框上方、靠左、可横向滑动
-            }`}>
+            <div className="flex gap-3 transition-all duration-700 animate-in fade-in duration-1000 order-2 mt-6 justify-center flex-wrap">
               
               <button 
                 onClick={() => handleTriggerAnalysis("简历缺陷一键诊断")} 
@@ -426,27 +324,35 @@ export default function FlywheelDashboard() {
               </button>
               
               <button 
-                // 👇 修改点：这里我们加上冒号，方便拦截器解析目标岗位
-                onClick={() => handleTriggerAnalysis("测试目标岗匹配度：后端开发工程师")} 
+                onClick={() => handleTriggerAnalysis("测试目标岗匹配度")} 
                 className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors"
               >
                 <Crosshair className="w-4 h-4 text-[#EA4335]" /> 测试岗匹配度
               </button>
               
               <button 
-                // 👇 修改点：同样指定一个测试用的高级岗位，触发 Action Plan
-                onClick={() => handleTriggerAnalysis("渲染大厂晋升图谱：AI智能体开发工程师")} 
+                onClick={() => handleTriggerAnalysis("渲染大厂晋升图谱")} 
                 className="shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E1F22] border border-zinc-800/80 hover:bg-[#252628] text-sm text-[#C4C7C5] transition-colors"
               >
                 <Map className="w-4 h-4 text-[#34A853]" /> 渲染晋升图谱
               </button>
+
+              
+
+              <button 
+                onClick={() => {
+                  const target = userProfile.targetRoles?.[0] || '软件工程师';
+                  sendMessage(`开启全真模拟面试：${target}`);
+                }}
+              >
+                全真模拟面试
+              </button>
+
+              
               
             </div>
 
-            {/* 输入框容器 */}
-            <div className={`bg-[#1E1F22] rounded-[32px] p-3 shadow-2xl border border-zinc-800/60 focus-within:bg-[#252628] focus-within:border-zinc-600 transition-all duration-300 relative w-full ${
-              !showAnalysis && messages.length === 0 ? 'order-1' : 'order-2'
-            }`}>
+            <div className="bg-[#1E1F22] rounded-[32px] p-3 shadow-2xl border border-zinc-800/60 focus-within:bg-[#252628] focus-within:border-zinc-600 transition-all duration-300 relative w-full order-1">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -492,115 +398,36 @@ export default function FlywheelDashboard() {
           </div>
         </section>
 
-        {/* ================= 右侧：Analysis Pane (60% 抽屉) 动态数据绑定 ================= */}
-        <section 
-          className={`h-full bg-[#0E0E0F] transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden z-10 border-l border-zinc-800/30
-          ${showAnalysis ? 'w-[60%] opacity-100' : 'w-0 opacity-0'}`}
-        >
-          <div className="w-[800px] h-full p-10 overflow-y-auto scrollbar-hide">
-             
-             <div className="flex items-center gap-4 mb-10">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-500/20 to-purple-500/20 border border-blue-500/30 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                   <Crosshair className="w-6 h-6 text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-semibold text-zinc-100 tracking-tight">岗位分析图谱</h3>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    {recommendationsBlock ? '已为您匹配到高度吻合的职业方向' : 'Agent 正在根据 MCP 数据库实时演算对比结果...'}
-                  </p>
-                </div>
-             </div>
+        {/* 右侧：图谱/报告展示区 (60%) */}
+        <div className="hidden lg:flex w-[60%] flex-col border-l border-zinc-800 bg-zinc-950 overflow-y-auto p-6">
+          {/* 获取当前激活消息（最后一条助手的消息）的积木 */}
+          {latestMessage?.role === 'assistant' && latestMessage.blocks?.map((block, idx) => {
+            switch (block.type) {
+              case 'career_map':
+                // 🚀 核心接头：渲染晋升图谱组件
+                return <PromotionGraphCard key={idx} levels={block.data?.levels || []} />;
+              
+              case 'mock_interview':
+                // 🚀 核心接头：渲染面试面板
+                return <MockInterviewPanel key={idx} role={block.role} questions={block.questions} />;
+                
+              case 'gap_analysis':
+                return <GapAnalysisCard key={idx} items={block.items} />;
+                
+              case 'action_plan':
+                return <ActionPlanCard key={idx} plan={block.plan} />;
 
-             {/* 动态渲染区域 */}
-             <div className="space-y-8">
-               
-               {!recommendationsBlock && latestMessage?.status !== 'done' && latestMessage?.status !== 'error' ? (
-                 /* --- 状态 1：等待数据时的智能骨架屏 --- */
-                 <div className="animate-pulse space-y-6">
-                   <div className="w-full h-[300px] bg-[#161718] rounded-3xl border border-zinc-800/60 flex flex-col items-center justify-center gap-4">
-                      <Database className="w-8 h-8 text-zinc-600 animate-bounce" />
-                      <span className="text-zinc-500 text-sm font-mono">Agent 正在根据 MCP 数据库实时演算对比结果...</span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div className="h-32 bg-[#161718] rounded-2xl border border-zinc-800/60"></div>
-                     <div className="h-32 bg-[#161718] rounded-2xl border border-zinc-800/60"></div>
-                   </div>
-                 </div>
-               ) : (
-                 /* --- 状态 2：根据 TDD 规范的 ResultBlock 类型进行多态渲染 --- */
-                 <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                   {latestMessage?.blocks?.map((block, index) => {
-                     switch (block.type) {
-                       case 'gap_analysis':
-                         const gapData = recommendationsBlockToGapResponse(latestMessage);
-                         return gapData ? <GapAnalysisCard key={index} items={gapData.gaps} /> : null;
-                       case 'mock_interview':
-                        return (
-                        <MockInterviewPanel 
-                          key={index} 
-                          role={block.role} 
-                          questions={block.questions} 
-                        />
-                      );  
-                       case 'action_plan':
-                         return <ActionPlanCard key={index} plan={block.plan} />;
-                       case 'career_recommendations':
-                         return (
-                           <div key={index} className="w-full bg-[#161718] rounded-3xl border border-zinc-800/60 p-8 mb-6 relative overflow-hidden">
-                             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-                             <h4 className="text-lg font-medium text-zinc-200 mb-6 flex items-center gap-2">
-                               <Sparkles className="w-5 h-5 text-blue-400" /> 核心推荐轨道
-                             </h4>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                               {block.items.map((item, idx) => {
-                                 // 👇 核心修复：移除 as any。TypeScript 已经知道 item 是 CareerRecommendation 类型
-                                 const title = item.role || item.title || '未知岗位';
-                                 const fallbackScore = 85 + ((idx * 7) % 13); 
-                                 const score = item.matchScore || fallbackScore;
-                                 const desc = item.reason || `🏢 ${item.company || '未知企业'} | 📍 ${item.location || '不限'} | 💰 ${item.salary_range || '薪资面议'}`;
-
-                                 return (
-                                   <div key={idx} className="bg-[#1E1F22] border border-zinc-700/50 p-6 rounded-2xl hover:border-blue-500/40 hover:bg-[#252628] transition-all group cursor-pointer flex flex-col justify-between">
-                                     <div>
-                                       <div className="flex justify-between items-start mb-4">
-                                         <h4 className="text-xl font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors line-clamp-1" title={title}>
-                                           {title}
-                                         </h4>
-                                         <div className="flex flex-col items-end shrink-0 ml-2">
-                                           <span className="text-2xl font-bold text-emerald-400">{score}</span>
-                                           <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Match Score</span>
-                                         </div>
-                                       </div>
-                                       <p className="text-sm text-zinc-400 leading-relaxed line-clamp-2">{desc}</p>
-                                     </div>
-                                     <div className="mt-6">
-                                       <div className="flex justify-between text-xs text-zinc-500 mb-2">
-                                         <span>能力覆盖率</span>
-                                         <span>{score}%</span>
-                                       </div>
-                                       <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
-                                         <div className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 rounded-full transition-all duration-1000 delay-500" style={{ width: `${score}%` }}></div>
-                                       </div>
-                                     </div>
-                                   </div>
-                                 );
-                               })}
-                             </div>
-                           </div>
-                         );
-                       default:
-                         return null; // 处理纯文本或其他未匹配的 block
-                     }
-                   })}
-                 </div>
-               )}
-             </div>
-
-          </div>
-        </section>
+              default:
+                return null;
+            }
+          }) || (
+            <div className="flex-1 flex items-center justify-center text-zinc-600 font-mono text-sm">
+              等待指令：请在左侧发起分析或面试请求
+            </div>
+          )}
+        </div>
 
       </main>
     </div>
   );
 }
-
